@@ -56,9 +56,5 @@ print(f"Final Portfolio Value:   ${output['Equity Final [$]']:,.2f}")
 print(f"Total Return:            {output['Return [%]']:.2f}%")
 print(f"Buy & Hold Return:       {output['Buy & Hold Return [%]']:.2f}%")
 
-if 'Return [%]' in output and 'Buy & Hold Return [%]' in output:
-    outperformance = output['Return [%]'] - output['Buy & Hold Return [%]']
-    print(f"\nStrategy vs Buy & Hold:  {outperformance:+.2f}%")
-
 
 bt.plot()
