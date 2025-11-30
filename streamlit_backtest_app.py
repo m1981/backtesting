@@ -4,6 +4,7 @@ import yfinance as yf
 from backtesting import Backtest, Strategy
 from backtesting.lib import crossover
 from backtesting.test import SMA
+import numpy as np
 import tempfile
 import os
 from datetime import datetime, timedelta
@@ -15,6 +16,39 @@ st.set_page_config(
     page_icon="📊",
     layout="wide"
 )
+
+
+def EMA(values, n):
+    """Calculate Exponential Moving Average"""
+    return pd.Series(values).ewm(span=n, adjust=False).mean()
+
+
+def RSI(values, n):
+    """Calculate RSI indicator"""
+    deltas = np.diff(values)
+    seed = deltas[:n+1]
+    up = seed[seed >= 0].sum()/n
+    down = -seed[seed < 0].sum()/n
+    rs = up/down if down != 0 else 0
+    rsi = np.zeros_like(values)
+    rsi[:n] = 100. - 100./(1.+rs)
+
+    for i in range(n, len(values)):
+        delta = deltas[i-1]
+        if delta > 0:
+            upval = delta
+            downval = 0.
+        else:
+            upval = 0.
+            downval = -delta
+
+        up = (up*(n-1) + upval)/n
+        down = (down*(n-1) + downval)/n
+
+        rs = up/down if down != 0 else 0
+        rsi[i] = 100. - 100./(1.+rs)
+
+    return rsi
 
 
 class BaseStrategy(Strategy, ABC):
@@ -117,16 +151,13 @@ class RsiStrategy(BaseStrategy):
         }
 
     def init(self):
-        def rsi(arr, n):
-            return talib.RSI(arr, timeperiod=n)
-
-        self.rsi = self.I(rsi, self.data.Close, self.rsi_period)
+        self.rsi = self.I(RSI, self.data.Close, self.rsi_period)
 
     def next(self):
         if self.rsi[-1] < self.rsi_lower and not self.position:
             self.buy()
         elif self.rsi[-1] > self.rsi_upper and self.position:
-            self.sell()
+            self.position.close()
 
 
 class StrategyRegistry:
@@ -295,26 +326,28 @@ def main():
         col1.metric("Symbols", len(symbols))
         col2.metric("Initial Capital", f"${initial_cash:,.0f}")
         col3.metric("Commission", f"{commission * 100:.2f}%")
-        col4.metric("Strategy", "SMA Cross")
+        col4.metric("Strategy", available_strategies[selected_strategy_key])
 
         st.markdown("---")
-        st.markdown("""
+        st.markdown(f"""
         ### About This App
         This backtesting dashboard allows you to:
         - Test multiple stock symbols simultaneously
-        - Customize Moving Average strategy parameters
+        - Choose from multiple trading strategies
+        - Customize strategy parameters
         - View interactive charts from backtesting.py
         - Compare strategy performance vs Buy & Hold
         - Analyze key performance metrics
 
-        ### Strategy: Simple Moving Average Crossover
-        - **Buy Signal**: Fast MA crosses above Slow MA
-        - **Sell Signal**: Slow MA crosses above Fast MA
+        ### Current Strategy: {available_strategies[selected_strategy_key]}
+        {selected_strategy_class.__doc__}
         """)
 
     else:
-        if fast_ma >= slow_ma:
-            st.error("❌ Fast MA must be less than Slow MA. Please adjust parameters.")
+        # Validate parameters for MA strategies
+        if selected_strategy_key in ['sma_cross', 'ema_cross']:
+            if param_values['n1'] >= param_values['n2']:
+                st.error("❌ Fast MA/EMA must be less than Slow MA/EMA. Please adjust parameters.")
             return
 
         # Progress tracking
@@ -324,6 +357,9 @@ def main():
         results = {}
         chart_htmls = {}
 
+        # Get maximum period needed for validation
+        max_period = max(param_values.values())
+
         # Run backtests for each symbol
         for i, symbol in enumerate(symbols):
             status_text.text(f"Processing {symbol}... ({i + 1}/{len(symbols)})")
@@ -331,11 +367,11 @@ def main():
             # Fetch data
             data = fetch_and_format_data(symbol, start_date, end_date)
 
-            if data is not None and len(data) > slow_ma:
+            if data is not None and len(data) > max_period:
                 # Run backtest
                 result, chart_html = run_backtest_for_symbol(
-                    symbol, data, SmaCross, initial_cash, commission,
-                    fast_ma, slow_ma
+                    symbol, data, selected_strategy_class, param_values,
+                    initial_cash, commission
                 )
 
                 if result is not None:
