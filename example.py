@@ -57,10 +57,17 @@ def run_multi_symbol_backtest(symbols, strategy_class=SmaCross, cash=10000, comm
             result = bt.run()
             results[symbol] = result
             
+            # Determine performance vs buy & hold
+            strategy_return = result['Return [%]']
+            buy_hold_return = result['Buy & Hold Return [%]']
+            outperformed = strategy_return > buy_hold_return
+            
             # Create subplot for equity curve
             ax1 = fig.add_subplot(gs[i, 0])
             equity_curve = result._equity_curve
-            ax1.plot(equity_curve.index, equity_curve['Equity'], label=f'{symbol} Portfolio', linewidth=2)
+            color = 'green' if outperformed else 'red'
+            ax1.plot(equity_curve.index, equity_curve['Equity'], 
+                    label=f'{symbol} Portfolio', linewidth=2, color=color)
             ax1.set_title(f'{symbol} - Equity Curve', fontsize=12, fontweight='bold')
             ax1.set_ylabel('Portfolio Value ($)')
             ax1.grid(True, alpha=0.3)
@@ -70,23 +77,26 @@ def run_multi_symbol_backtest(symbols, strategy_class=SmaCross, cash=10000, comm
             ax2 = fig.add_subplot(gs[i, 1])
             ax2.axis('off')
             
-            # Key metrics text
+            # Key metrics text with color coding
+            performance_indicator = "✓" if outperformed else "✗"
             metrics_text = f"""
-Return: {result['Return [%]']:.1f}%
-Buy & Hold: {result['Buy & Hold Return [%]']:.1f}%
+{performance_indicator} Return: {strategy_return:.1f}%
+Buy & Hold: {buy_hold_return:.1f}%
 Sharpe: {result['Sharpe Ratio']:.2f}
 Max DD: {result['Max. Drawdown [%]']:.1f}%
 Trades: {result['# Trades']}
 Win Rate: {result['Win Rate [%]']:.1f}%
             """.strip()
             
+            box_color = 'lightgreen' if outperformed else 'lightcoral'
             ax2.text(0.1, 0.5, metrics_text, transform=ax2.transAxes, 
                     fontsize=10, verticalalignment='center',
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.5))
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor=box_color, alpha=0.7))
             
-            # Print summary
-            print(f"\n{symbol}:")
-            print(f"  Return: {result['Return [%]']:.1f}% | Buy&Hold: {result['Buy & Hold Return [%]']:.1f}%")
+            # Print summary with color indicators
+            status = "BEAT" if outperformed else "LOST"
+            print(f"\n{symbol} [{status}]:")
+            print(f"  Return: {strategy_return:.1f}% | Buy&Hold: {buy_hold_return:.1f}%")
             print(f"  Sharpe: {result['Sharpe Ratio']:.2f} | Max DD: {result['Max. Drawdown [%]']:.1f}%")
             print(f"  Trades: {result['# Trades']} | Win Rate: {result['Win Rate [%]']:.1f}%")
             
@@ -98,24 +108,44 @@ Win Rate: {result['Win Rate [%]']:.1f}%
     
     return results
 
-# Example usage
+# Enhanced summary table with color coding
+def create_colored_summary(results):
+    """Create summary table with performance indicators"""
+    summary_data = {}
+    
+    for symbol, result in results.items():
+        strategy_return = result['Return [%]']
+        buy_hold_return = result['Buy & Hold Return [%]']
+        outperformed = strategy_return > buy_hold_return
+        
+        summary_data[symbol] = {
+            'Return [%]': strategy_return,
+            'Buy & Hold [%]': buy_hold_return,
+            'Outperformed': "✓" if outperformed else "✗",
+            'Sharpe Ratio': result['Sharpe Ratio'],
+            'Max Drawdown [%]': result['Max. Drawdown [%]'],
+            'Win Rate [%]': result['Win Rate [%]'],
+            '# Trades': result['# Trades']
+        }
+    
+    summary_df = pd.DataFrame(summary_data).T
+    
+    print("\n" + "="*80)
+    print("SUMMARY COMPARISON TABLE")
+    print("="*80)
+    print(summary_df.round(2))
+    
+    # Performance summary
+    winners = sum(1 for symbol, result in results.items() 
+                 if result['Return [%]'] > result['Buy & Hold Return [%]'])
+    total = len(results)
+    
+    print(f"\nSTRATEGY PERFORMANCE: {winners}/{total} symbols outperformed Buy & Hold")
+    print(f"Success Rate: {winners/total*100:.1f}%")
+    
+    return summary_df
+
+# Updated example usage
 symbols = ['GOOG', 'AAPL', 'MSFT', 'TSLA']
 results = run_multi_symbol_backtest(symbols)
-
-# Optional: Create summary comparison table
-summary_df = pd.DataFrame({
-    symbol: {
-        'Return [%]': result['Return [%]'],
-        'Buy & Hold [%]': result['Buy & Hold Return [%]'],
-        'Sharpe Ratio': result['Sharpe Ratio'],
-        'Max Drawdown [%]': result['Max. Drawdown [%]'],
-        'Win Rate [%]': result['Win Rate [%]'],
-        '# Trades': result['# Trades']
-    }
-    for symbol, result in results.items()
-}).T
-
-print("\n" + "="*80)
-print("SUMMARY COMPARISON TABLE")
-print("="*80)
-print(summary_df.round(2))
+summary_df = create_colored_summary(results)
