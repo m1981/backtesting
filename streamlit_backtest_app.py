@@ -196,14 +196,14 @@ class RsiStrategy(BaseStrategy):
 
 
 class MacdStrategy(BaseStrategy):
-    """MACD Signal Line Zero Cross Strategy"""
+    """MACD Signal Line Zero Cross Strategy - Long Only"""
     signal_period = 14
     fast_period = 12
     slow_period = 26
 
     @classmethod
     def get_name(cls) -> str:
-        return "MACD Zero Cross"
+        return "MACD Zero Cross (Long Only)"
 
     @classmethod
     def get_parameters(cls) -> dict:
@@ -217,32 +217,29 @@ class MacdStrategy(BaseStrategy):
         close = self.data.Close
         signal_line, zero_line = self.I(MACD_Signal_With_Zero, close, self.fast_period, self.slow_period, self.signal_period)
         self.signal_line = signal_line
-        self.zero_line = zero_line  # This will show as horizontal line at 0
+        self.zero_line = zero_line
         
-        # Debug: Print strategy initialization
         print(f"[MACD DEBUG] Strategy initialized with fast={self.fast_period}, slow={self.slow_period}, signal={self.signal_period}")
 
     def next(self):
-        # Get current date for debugging
         current_date = self.data.index[-1]
         
-        # Buy when signal line crosses above 0
         if len(self.signal_line) >= 2:
             prev_signal = self.signal_line[-2]
             curr_signal = self.signal_line[-1]
             
-            # Debug print for signal values
-            if abs(curr_signal) < 0.5:  # Only print when near zero
+            # Enhanced debugging - show all significant moves
+            if abs(curr_signal - prev_signal) > 0.1 or abs(curr_signal) > 0.3:
                 print(f"[MACD DEBUG] {current_date}: Signal={curr_signal:.4f}, Prev={prev_signal:.4f}, Position={bool(self.position)}")
             
-            # Buy signal: crossing above zero
-            if prev_signal <= 0 and curr_signal > 0 and not self.position:
-                print(f"[MACD BUY] {current_date}: Signal crossed above 0 ({prev_signal:.4f} -> {curr_signal:.4f})")
+            # Buy signal: crossing above +0.5 (more realistic condition)
+            if prev_signal <= 0.5 and curr_signal > 0.5 and not self.position:
+                print(f"[MACD BUY] {current_date}: Signal crossed above 0.5 ({prev_signal:.4f} -> {curr_signal:.4f})")
                 self.buy()
                 
-            # Sell signal: crossing below zero  
+            # Exit signal: crossing below zero (close long position)
             elif prev_signal >= 0 and curr_signal < 0 and self.position:
-                print(f"[MACD SELL] {current_date}: Signal crossed below 0 ({prev_signal:.4f} -> {curr_signal:.4f})")
+                print(f"[MACD EXIT] {current_date}: Signal crossed below 0 ({prev_signal:.4f} -> {curr_signal:.4f})")
                 self.position.close()
 
 
