@@ -73,6 +73,17 @@ def MACD_Signal_Only(values, fast=12, slow=26, signal=9):
     return signal_line  # Return only signal line
 
 
+def MACD_Signal_With_Zero(values, fast=12, slow=26, signal=9):
+    """Calculate MACD signal line with zero reference"""
+    values = pd.Series(values)
+    ema_fast = values.ewm(span=fast).mean()
+    ema_slow = values.ewm(span=slow).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal).mean()
+    zero_line = pd.Series(0, index=signal_line.index)  # Zero reference
+    return signal_line, zero_line
+
+
 class BaseStrategy(Strategy, ABC):
     """Abstract base class for all trading strategies"""
 
@@ -204,8 +215,9 @@ class MacdStrategy(BaseStrategy):
 
     def init(self):
         close = self.data.Close
-        # Use signal-only function for cleaner chart display
-        self.signal_line = self.I(MACD_Signal_Only, close, self.fast_period, self.slow_period, self.signal_period)
+        signal_line, zero_line = self.I(MACD_Signal_With_Zero, close, self.fast_period, self.slow_period, self.signal_period)
+        self.signal_line = signal_line
+        self.zero_line = zero_line  # This will show as horizontal line at 0
 
     def next(self):
         # Buy when signal line crosses above 0
