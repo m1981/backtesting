@@ -52,6 +52,17 @@ def RSI(values, n):
     return rsi
 
 
+def MACD(values, fast=12, slow=26, signal=9):
+    """Calculate MACD indicator"""
+    values = pd.Series(values)
+    ema_fast = values.ewm(span=fast).mean()
+    ema_slow = values.ewm(span=slow).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+
 class BaseStrategy(Strategy, ABC):
     """Abstract base class for all trading strategies"""
 
@@ -163,13 +174,47 @@ class RsiStrategy(BaseStrategy):
             self.position.close()
 
 
+class MacdStrategy(BaseStrategy):
+    """MACD Signal Line Zero Cross Strategy"""
+    signal_period = 14
+    fast_period = 12
+    slow_period = 26
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "MACD Zero Cross"
+
+    @classmethod
+    def get_parameters(cls) -> dict:
+        return {
+            'signal_period': {'label': 'Signal Period', 'min': 5, 'max': 30, 'default': 14, 'step': 1},
+            'fast_period': {'label': 'Fast EMA Period', 'min': 5, 'max': 20, 'default': 12, 'step': 1},
+            'slow_period': {'label': 'Slow EMA Period', 'min': 20, 'max': 50, 'default': 26, 'step': 1}
+        }
+
+    def init(self):
+        close = self.data.Close
+        macd_line, signal_line, histogram = self.I(MACD, close, self.fast_period, self.slow_period, self.signal_period)
+        self.signal_line = signal_line
+
+    def next(self):
+        # Buy when signal line crosses above 0
+        if len(self.signal_line) >= 2:
+            if self.signal_line[-2] <= 0 and self.signal_line[-1] > 0 and not self.position:
+                self.buy()
+            # Sell when signal line crosses below 0
+            elif self.signal_line[-2] >= 0 and self.signal_line[-1] < 0 and self.position:
+                self.position.close()
+
+
 class StrategyRegistry:
     """Registry for all available strategies"""
 
     _strategies = {
         'sma_cross': SmaCrossStrategy,
         'ema_cross': EmaCrossStrategy,
-        'rsi_mean_reversion': RsiStrategy
+        'rsi_mean_reversion': RsiStrategy,
+        'macd_zero_cross': MacdStrategy
     }
 
     @classmethod
@@ -574,7 +619,7 @@ def main():
 
                 # Display the chart
                 with st.expander(f"View {symbol} Chart", expanded=True):
-                    st.components.v1.html(chart_htmls[symbol], height=630, scrolling=True)
+                    st.components.v1.html(chart_htmls[symbol], height=730, scrolling=True)
 
                 st.markdown("---")
             else:
