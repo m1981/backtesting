@@ -9,6 +9,7 @@ import tempfile
 import os
 from datetime import datetime, timedelta
 from abc import ABC, abstractmethod
+import traceback
 
 # Page configuration
 st.set_page_config(
@@ -26,15 +27,15 @@ def EMA(values, n):
 def RSI(values, n):
     """Calculate RSI indicator"""
     deltas = np.diff(values)
-    seed = deltas[:n+1]
-    up = seed[seed >= 0].sum()/n
-    down = -seed[seed < 0].sum()/n
-    rs = up/down if down != 0 else 0
+    seed = deltas[:n + 1]
+    up = seed[seed >= 0].sum() / n
+    down = -seed[seed < 0].sum() / n
+    rs = up / down if down != 0 else 0
     rsi = np.zeros_like(values)
-    rsi[:n] = 100. - 100./(1.+rs)
+    rsi[:n] = 100. - 100. / (1. + rs)
 
     for i in range(n, len(values)):
-        delta = deltas[i-1]
+        delta = deltas[i - 1]
         if delta > 0:
             upval = delta
             downval = 0.
@@ -42,11 +43,11 @@ def RSI(values, n):
             upval = 0.
             downval = -delta
 
-        up = (up*(n-1) + upval)/n
-        down = (down*(n-1) + downval)/n
+        up = (up * (n - 1) + upval) / n
+        down = (down * (n - 1) + downval) / n
 
-        rs = up/down if down != 0 else 0
-        rsi[i] = 100. - 100./(1.+rs)
+        rs = up / down if down != 0 else 0
+        rsi[i] = 100. - 100. / (1. + rs)
 
     return rsi
 
@@ -103,6 +104,7 @@ class SmaCrossStrategy(BaseStrategy):
             self.position.close()
             self.sell()
 
+
 class EmaCrossStrategy(BaseStrategy):
     """Exponential Moving Average Crossover Strategy"""
     n1 = 12
@@ -131,6 +133,7 @@ class EmaCrossStrategy(BaseStrategy):
         elif crossover(self.ema2, self.ema1):
             self.position.close()
             self.sell()
+
 
 class RsiStrategy(BaseStrategy):
     """RSI Mean Reversion Strategy"""
@@ -185,10 +188,13 @@ class StrategyRegistry:
 @st.cache_data
 def fetch_and_format_data(symbol, start, end):
     """Fetch and format data for backtesting"""
+    print(f"[DEBUG] Fetching data for {symbol} from {start} to {end}")
     try:
         data = yf.download(symbol, start=start, end=end, progress=False)
+        print(f"[DEBUG] Downloaded {len(data)} rows for {symbol}")
 
         if data.empty:
+            print(f"[DEBUG] Empty data for {symbol}")
             return None
 
         if isinstance(data.columns, pd.MultiIndex):
@@ -196,8 +202,11 @@ def fetch_and_format_data(symbol, start, end):
 
         data = data[['Open', 'High', 'Low', 'Close', 'Volume']]
         data.index.name = 'Date'
+        print(f"[DEBUG] Successfully formatted data for {symbol}")
         return data
     except Exception as e:
+        print(f"[DEBUG] Error fetching {symbol}: {e}")
+        print(traceback.format_exc())
         st.error(f"Error fetching {symbol}: {e}")
         return None
 
@@ -205,30 +214,54 @@ def fetch_and_format_data(symbol, start, end):
 def run_backtest_for_symbol(symbol, data, strategy_class, strategy_params,
                             cash, commission):
     """Run backtest for a single symbol with dynamic strategy"""
+    print(f"[DEBUG] Starting backtest for {symbol}")
+    print(f"[DEBUG] Strategy: {strategy_class.__name__}")
+    print(f"[DEBUG] Parameters: {strategy_params}")
+    print(f"[DEBUG] Cash: {cash}, Commission: {commission}")
+
     try:
         # Configure strategy parameters
+        print(f"[DEBUG] Configuring strategy parameters...")
         strategy_class.configure_parameters(**strategy_params)
 
+        # Verify parameters were set
+        for param, value in strategy_params.items():
+            actual_value = getattr(strategy_class, param, None)
+            print(f"[DEBUG] Parameter {param}: expected={value}, actual={actual_value}")
+
         # Run backtest
+        print(f"[DEBUG] Creating Backtest object...")
         bt = Backtest(data, strategy_class, cash=cash, commission=commission)
+
+        print(f"[DEBUG] Running backtest...")
         result = bt.run()
+        print(f"[DEBUG] Backtest complete. Return: {result['Return [%]']:.2f}%")
 
         # Generate chart HTML
+        print(f"[DEBUG] Generating chart...")
         temp_dir = tempfile.gettempdir()
         chart_path = os.path.join(temp_dir, f'{symbol}_backtest.html')
+        print(f"[DEBUG] Chart path: {chart_path}")
+
         bt.plot(filename=chart_path, open_browser=False)
+        print(f"[DEBUG] Chart saved")
 
         with open(chart_path, 'r') as f:
             chart_html = f.read()
+        print(f"[DEBUG] Chart HTML loaded, length: {len(chart_html)}")
 
         return result, chart_html
 
     except Exception as e:
+        print(f"[DEBUG] ERROR in backtest for {symbol}: {e}")
+        print(traceback.format_exc())
         st.error(f"Error running backtest for {symbol}: {e}")
         return None, None
 
 
 def main():
+    print("\n[DEBUG] ========== MAIN FUNCTION STARTED ==========")
+
     st.title("📊 Multi-Symbol Stock Backtesting Dashboard")
     st.markdown("---")
 
@@ -244,6 +277,7 @@ def main():
             height=100
         )
         symbols = [s.strip().upper() for s in symbols_input.split('\n') if s.strip()]
+        print(f"[DEBUG] Symbols: {symbols}")
 
         st.markdown("---")
 
@@ -261,20 +295,28 @@ def main():
                 value=datetime.now()
             )
 
+        print(f"[DEBUG] Date range: {start_date} to {end_date}")
+
         st.markdown("---")
 
         # Strategy selection
         st.subheader("Strategy Selection")
         available_strategies = StrategyRegistry.get_all_strategies()
+        print(f"[DEBUG] Available strategies: {available_strategies}")
+
         selected_strategy_key = st.selectbox(
             "Choose Strategy",
             options=list(available_strategies.keys()),
             format_func=lambda x: available_strategies[x],
             index=0
         )
+        print(f"[DEBUG] Selected strategy key: {selected_strategy_key}")
 
         selected_strategy_class = StrategyRegistry.get_strategy(selected_strategy_key)
+        print(f"[DEBUG] Selected strategy class: {selected_strategy_class}")
+
         strategy_params = selected_strategy_class.get_parameters()
+        print(f"[DEBUG] Strategy parameters config: {strategy_params}")
 
         st.markdown("---")
 
@@ -290,6 +332,8 @@ def main():
                 value=param_config['default'],
                 step=param_config['step']
             )
+
+        print(f"[DEBUG] Parameter values from UI: {param_values}")
 
         st.markdown("---")
 
@@ -312,13 +356,17 @@ def main():
             format="%.2f"
         ) / 100
 
+        print(f"[DEBUG] Initial cash: {initial_cash}, Commission: {commission}")
+
         st.markdown("---")
 
         # Run button
         run_button = st.button("🚀 Run Backtest", type="primary", use_container_width=True)
+        print(f"[DEBUG] Run button clicked: {run_button}")
 
     # Main content area
     if not run_button:
+        print("[DEBUG] Run button NOT clicked - showing info page")
         st.info("👈 Configure your backtest parameters in the sidebar and click 'Run Backtest'")
 
         # Display example metrics
@@ -344,13 +392,19 @@ def main():
         """)
 
     else:
+        print("[DEBUG] ========== BACKTEST EXECUTION STARTED ==========")
+
         # Validate parameters for MA strategies
         if selected_strategy_key in ['sma_cross', 'ema_cross']:
+            print(f"[DEBUG] Validating MA parameters: n1={param_values['n1']}, n2={param_values['n2']}")
             if param_values['n1'] >= param_values['n2']:
+                print("[DEBUG] VALIDATION FAILED: n1 >= n2")
                 st.error("❌ Fast MA/EMA must be less than Slow MA/EMA. Please adjust parameters.")
-            return
+                return
+            print("[DEBUG] Validation passed")
 
         # Progress tracking
+        print("[DEBUG] Creating progress tracking...")
         progress_bar = st.progress(0)
         status_text = st.empty()
 
@@ -359,35 +413,54 @@ def main():
 
         # Get maximum period needed for validation
         max_period = max(param_values.values())
+        print(f"[DEBUG] Max period needed: {max_period}")
 
         # Run backtests for each symbol
+        print(f"[DEBUG] Starting loop for {len(symbols)} symbols")
         for i, symbol in enumerate(symbols):
+            print(f"\n[DEBUG] ===== Processing symbol {i + 1}/{len(symbols)}: {symbol} =====")
             status_text.text(f"Processing {symbol}... ({i + 1}/{len(symbols)})")
 
             # Fetch data
+            print(f"[DEBUG] Fetching data for {symbol}...")
             data = fetch_and_format_data(symbol, start_date, end_date)
 
-            if data is not None and len(data) > max_period:
-                # Run backtest
-                result, chart_html = run_backtest_for_symbol(
-                    symbol, data, selected_strategy_class, param_values,
-                    initial_cash, commission
-                )
+            if data is not None:
+                print(f"[DEBUG] Data fetched successfully. Rows: {len(data)}, Max period: {max_period}")
 
-                if result is not None:
-                    results[symbol] = result
-                    chart_htmls[symbol] = chart_html
+                if len(data) > max_period:
+                    print(f"[DEBUG] Sufficient data. Running backtest...")
+                    # Run backtest
+                    result, chart_html = run_backtest_for_symbol(
+                        symbol, data, selected_strategy_class, param_values,
+                        initial_cash, commission
+                    )
+
+                    if result is not None:
+                        print(f"[DEBUG] Backtest successful for {symbol}")
+                        results[symbol] = result
+                        chart_htmls[symbol] = chart_html
+                    else:
+                        print(f"[DEBUG] Backtest returned None for {symbol}")
+                else:
+                    print(f"[DEBUG] Insufficient data: {len(data)} <= {max_period}")
+                    st.warning(f"⚠️ Insufficient data for {symbol} (need > {max_period}, got {len(data)})")
             else:
-                st.warning(f"⚠️ Insufficient data for {symbol}")
+                print(f"[DEBUG] Data fetch returned None for {symbol}")
 
             progress_bar.progress((i + 1) / len(symbols))
 
         status_text.empty()
         progress_bar.empty()
 
+        print(f"[DEBUG] Backtest loop complete. Results count: {len(results)}")
+
         if not results:
+            print("[DEBUG] NO RESULTS - showing error")
             st.error("❌ No successful backtests. Please check your symbols and date range.")
             return
+
+        print("[DEBUG] ========== DISPLAYING RESULTS ==========")
 
         # Display summary metrics
         st.header("📈 Performance Summary")
@@ -397,6 +470,8 @@ def main():
                       if r['Return [%]'] > r['Buy & Hold Return [%]'])
         total = len(results)
         success_rate = (winners / total * 100) if total > 0 else 0
+
+        print(f"[DEBUG] Winners: {winners}/{total}, Success rate: {success_rate:.1f}%")
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Symbols", total)
@@ -411,6 +486,7 @@ def main():
 
         # Summary table
         st.subheader("📊 Detailed Results Table")
+        print("[DEBUG] Creating summary table...")
 
         summary_data = []
         for symbol, result in results.items():
@@ -431,6 +507,7 @@ def main():
             })
 
         summary_df = pd.DataFrame(summary_data)
+        print(f"[DEBUG] Summary DataFrame created with {len(summary_df)} rows")
 
         # Style the dataframe
         def highlight_performance(row):
@@ -465,8 +542,10 @@ def main():
         # Display individual charts
         st.header("📊 Individual Backtest Charts")
         st.markdown("Interactive charts generated by backtesting.py")
+        print("[DEBUG] Displaying individual charts...")
 
         for symbol in results.keys():
+            print(f"[DEBUG] Rendering chart for {symbol}")
             if symbol in chart_htmls:
                 result = results[symbol]
                 strategy_return = result['Return [%]']
@@ -495,10 +574,13 @@ def main():
 
                 # Display the chart
                 with st.expander(f"View {symbol} Chart", expanded=True):
-                    # Embed the HTML chart with proper height
                     st.components.v1.html(chart_htmls[symbol], height=630, scrolling=True)
 
                 st.markdown("---")
+            else:
+                print(f"[DEBUG] No chart HTML for {symbol}")
+
+        print("[DEBUG] ========== MAIN FUNCTION COMPLETE ==========\n")
 
 
 if __name__ == "__main__":
