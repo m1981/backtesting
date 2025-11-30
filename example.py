@@ -60,28 +60,5 @@ if 'Return [%]' in output and 'Buy & Hold Return [%]' in output:
     outperformance = output['Return [%]'] - output['Buy & Hold Return [%]']
     print(f"\nStrategy vs Buy & Hold:  {outperformance:+.2f}%")
 
-print(f"\nWin Rate:                {output['Win Rate [%]']:.2f}%")
-print(f"Best Day:                {output['Best Day [%]']:.2f}%")
-print(f"Worst Day:               {output['Worst Day [%]']:.2f}%")
-print(f"\nSharpe Ratio:            {output['Sharpe Ratio']:.2f}")
-print(f"Sortino Ratio:           {output['Sortino Ratio']:.2f}")
-print(f"Max Drawdown:            {output['Max. Drawdown [%]']:.2f}%")
-print(f"Avg. Drawdown:           {output['Avg. Drawdown [%]']:.2f}%")
-print(f"\nTotal Trades:            {output['# Trades']:.0f}")
-print(f"Winning Trades:          {output['Won Trades']:.0f}")
-print(f"Losing Trades:           {(output['# Trades'] - output['Won Trades']):.0f}")
-print(f"Profit Factor:           {output['Profit Factor']:.2f}")
-print(f"\nReturn/DD Ratio:         {output['Return/DD']:.2f}")
-print("="*60 + "\n")
-
-# Show if profitable
-if output['Return [%]'] > 0:
-    print(f"✅ PROFITABLE: Strategy gained {output['Return [%]']:.2f}%")
-    profit = output['Equity Final [$]'] - 10000
-    print(f"   Profit: ${profit:,.2f}")
-else:
-    print(f"❌ NOT PROFITABLE: Strategy lost {output['Return [%]']:.2f}%")
-    loss = output['Equity Final [$]'] - 10000
-    print(f"   Loss: ${loss:,.2f}")
 
 bt.plot()
