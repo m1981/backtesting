@@ -218,14 +218,31 @@ class MacdStrategy(BaseStrategy):
         signal_line, zero_line = self.I(MACD_Signal_With_Zero, close, self.fast_period, self.slow_period, self.signal_period)
         self.signal_line = signal_line
         self.zero_line = zero_line  # This will show as horizontal line at 0
+        
+        # Debug: Print strategy initialization
+        print(f"[MACD DEBUG] Strategy initialized with fast={self.fast_period}, slow={self.slow_period}, signal={self.signal_period}")
 
     def next(self):
+        # Get current date for debugging
+        current_date = self.data.index[-1]
+        
         # Buy when signal line crosses above 0
         if len(self.signal_line) >= 2:
-            if self.signal_line[-2] <= 0 and self.signal_line[-1] > 0 and not self.position:
+            prev_signal = self.signal_line[-2]
+            curr_signal = self.signal_line[-1]
+            
+            # Debug print for signal values
+            if abs(curr_signal) < 0.5:  # Only print when near zero
+                print(f"[MACD DEBUG] {current_date}: Signal={curr_signal:.4f}, Prev={prev_signal:.4f}, Position={bool(self.position)}")
+            
+            # Buy signal: crossing above zero
+            if prev_signal <= 0 and curr_signal > 0 and not self.position:
+                print(f"[MACD BUY] {current_date}: Signal crossed above 0 ({prev_signal:.4f} -> {curr_signal:.4f})")
                 self.buy()
-            # Sell when signal line crosses below 0
-            elif self.signal_line[-2] >= 0 and self.signal_line[-1] < 0 and self.position:
+                
+            # Sell signal: crossing below zero  
+            elif prev_signal >= 0 and curr_signal < 0 and self.position:
+                print(f"[MACD SELL] {current_date}: Signal crossed below 0 ({prev_signal:.4f} -> {curr_signal:.4f})")
                 self.position.close()
 
 
@@ -291,17 +308,12 @@ def run_backtest_for_symbol(symbol, data, strategy_class, strategy_params,
         print(f"[DEBUG] Configuring strategy parameters...")
         strategy_class.configure_parameters(**strategy_params)
 
-        # Verify parameters were set
-        for param, value in strategy_params.items():
-            actual_value = getattr(strategy_class, param, None)
-            print(f"[DEBUG] Parameter {param}: expected={value}, actual={actual_value}")
-
         # Run backtest
         print(f"[DEBUG] Creating Backtest object...")
         bt = Backtest(data, strategy_class, cash=cash, commission=commission)
 
         print(f"[DEBUG] Running backtest...")
-        result = bt.run()
+        result = bt.run()  # Remove finalize_trades from here
         print(f"[DEBUG] Backtest complete. Return: {result['Return [%]']:.2f}%")
 
         # Generate chart HTML
@@ -354,7 +366,7 @@ def main():
         with col1:
             start_date = st.date_input(
                 "Start Date",
-                value=datetime(2020, 1, 1)
+                value=datetime(2025, 1, 1)
             )
         with col2:
             end_date = st.date_input(
@@ -375,7 +387,7 @@ def main():
             "Choose Strategy",
             options=list(available_strategies.keys()),
             format_func=lambda x: available_strategies[x],
-            index=0
+            index=3
         )
         print(f"[DEBUG] Selected strategy key: {selected_strategy_key}")
 
@@ -641,7 +653,7 @@ def main():
 
                 # Display the chart
                 with st.expander(f"View {symbol} Chart", expanded=True):
-                    st.components.v1.html(chart_htmls[symbol], height=730, scrolling=True)
+                    st.components.v1.html(chart_htmls[symbol], height=830, scrolling=False)
 
                 st.markdown("---")
             else:
