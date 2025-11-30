@@ -7,6 +7,7 @@ from backtesting.test import SMA
 import tempfile
 import os
 from datetime import datetime, timedelta
+from abc import ABC, abstractmethod
 
 # Page configuration
 st.set_page_config(
@@ -16,10 +17,44 @@ st.set_page_config(
 )
 
 
-class SmaCross(Strategy):
+class BaseStrategy(Strategy, ABC):
+    """Abstract base class for all trading strategies"""
+
+    @classmethod
+    @abstractmethod
+    def get_name(cls) -> str:
+        """Return strategy display name"""
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_parameters(cls) -> dict:
+        """Return strategy parameters for UI configuration"""
+        pass
+
+    @classmethod
+    def configure_parameters(cls, **params):
+        """Configure strategy parameters dynamically"""
+        for param, value in params.items():
+            if hasattr(cls, param):
+                setattr(cls, param, value)
+
+
+class SmaCrossStrategy(BaseStrategy):
     """Simple Moving Average Crossover Strategy"""
-    n1 = 10  # Fast MA period
-    n2 = 20  # Slow MA period
+    n1 = 10  # Fast MA
+    n2 = 20  # Slow MA
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "SMA Crossover"
+
+    @classmethod
+    def get_parameters(cls) -> dict:
+        return {
+            'n1': {'label': 'Fast MA Period', 'min': 5, 'max': 50, 'default': 10, 'step': 1},
+            'n2': {'label': 'Slow MA Period', 'min': 10, 'max': 200, 'default': 20, 'step': 5}
+        }
 
     def init(self):
         close = self.data.Close
@@ -33,6 +68,87 @@ class SmaCross(Strategy):
         elif crossover(self.sma2, self.sma1):
             self.position.close()
             self.sell()
+
+class EmaCrossStrategy(BaseStrategy):
+    """Exponential Moving Average Crossover Strategy"""
+    n1 = 12
+    n2 = 26
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "EMA Crossover"
+
+    @classmethod
+    def get_parameters(cls) -> dict:
+        return {
+            'n1': {'label': 'Fast EMA Period', 'min': 5, 'max': 50, 'default': 12, 'step': 1},
+            'n2': {'label': 'Slow EMA Period', 'min': 10, 'max': 200, 'default': 26, 'step': 1}
+        }
+
+    def init(self):
+        close = self.data.Close
+        self.ema1 = self.I(EMA, close, self.n1)
+        self.ema2 = self.I(EMA, close, self.n2)
+
+    def next(self):
+        if crossover(self.ema1, self.ema2):
+            self.position.close()
+            self.buy()
+        elif crossover(self.ema2, self.ema1):
+            self.position.close()
+            self.sell()
+
+class RsiStrategy(BaseStrategy):
+    """RSI Mean Reversion Strategy"""
+    rsi_period = 14
+    rsi_upper = 70
+    rsi_lower = 30
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "RSI Mean Reversion"
+
+    @classmethod
+    def get_parameters(cls) -> dict:
+        return {
+            'rsi_period': {'label': 'RSI Period', 'min': 5, 'max': 50, 'default': 14, 'step': 1},
+            'rsi_upper': {'label': 'RSI Upper Threshold', 'min': 60, 'max': 90, 'default': 70, 'step': 5},
+            'rsi_lower': {'label': 'RSI Lower Threshold', 'min': 10, 'max': 40, 'default': 30, 'step': 5}
+        }
+
+    def init(self):
+        def rsi(arr, n):
+            return talib.RSI(arr, timeperiod=n)
+
+        self.rsi = self.I(rsi, self.data.Close, self.rsi_period)
+
+    def next(self):
+        if self.rsi[-1] < self.rsi_lower and not self.position:
+            self.buy()
+        elif self.rsi[-1] > self.rsi_upper and self.position:
+            self.sell()
+
+
+class StrategyRegistry:
+    """Registry for all available strategies"""
+
+    _strategies = {
+        'sma_cross': SmaCrossStrategy,
+        'ema_cross': EmaCrossStrategy,
+        'rsi_mean_reversion': RsiStrategy
+    }
+
+    @classmethod
+    def get_all_strategies(cls) -> dict:
+        return {key: strategy.get_name() for key, strategy in cls._strategies.items()}
+
+    @classmethod
+    def get_strategy(cls, strategy_key: str) -> BaseStrategy:
+        return cls._strategies.get(strategy_key)
+
+    @classmethod
+    def register_strategy(cls, key: str, strategy_class: BaseStrategy):
+        cls._strategies[key] = strategy_class
 
 
 @st.cache_data
@@ -55,13 +171,12 @@ def fetch_and_format_data(symbol, start, end):
         return None
 
 
-def run_backtest_for_symbol(symbol, data, strategy_class, cash, commission,
-                            fast_ma, slow_ma):
-    """Run backtest for a single symbol"""
+def run_backtest_for_symbol(symbol, data, strategy_class, strategy_params,
+                            cash, commission):
+    """Run backtest for a single symbol with dynamic strategy"""
     try:
-        # Update strategy parameters
-        strategy_class.n1 = fast_ma
-        strategy_class.n2 = slow_ma
+        # Configure strategy parameters
+        strategy_class.configure_parameters(**strategy_params)
 
         # Run backtest
         bt = Backtest(data, strategy_class, cash=cash, commission=commission)
@@ -72,7 +187,6 @@ def run_backtest_for_symbol(symbol, data, strategy_class, cash, commission,
         chart_path = os.path.join(temp_dir, f'{symbol}_backtest.html')
         bt.plot(filename=chart_path, open_browser=False)
 
-        # Read HTML content
         with open(chart_path, 'r') as f:
             chart_html = f.read()
 
@@ -118,13 +232,33 @@ def main():
 
         st.markdown("---")
 
-        # Strategy parameters
-        st.subheader("Strategy Parameters")
-        fast_ma = st.slider("Fast MA Period", 5, 50, 10, 1)
-        slow_ma = st.slider("Slow MA Period", 10, 200, 20, 5)
+        # Strategy selection
+        st.subheader("Strategy Selection")
+        available_strategies = StrategyRegistry.get_all_strategies()
+        selected_strategy_key = st.selectbox(
+            "Choose Strategy",
+            options=list(available_strategies.keys()),
+            format_func=lambda x: available_strategies[x],
+            index=0
+        )
 
-        if fast_ma >= slow_ma:
-            st.warning("⚠️ Fast MA should be less than Slow MA")
+        selected_strategy_class = StrategyRegistry.get_strategy(selected_strategy_key)
+        strategy_params = selected_strategy_class.get_parameters()
+
+        st.markdown("---")
+
+        # Dynamic strategy parameters
+        st.subheader("Strategy Parameters")
+        param_values = {}
+
+        for param_name, param_config in strategy_params.items():
+            param_values[param_name] = st.slider(
+                param_config['label'],
+                min_value=param_config['min'],
+                max_value=param_config['max'],
+                value=param_config['default'],
+                step=param_config['step']
+            )
 
         st.markdown("---")
 
