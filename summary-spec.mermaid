@@ -1,0 +1,81 @@
+flowchart TB
+    subgraph SPEC ["📋 MACD MONEY MAP - IMPLEMENTATION SPECIFICATION"]
+        direction TB
+        
+        subgraph PARAMS ["⚙️ Configurable Parameters"]
+            P1["fast_ema: 12"]
+            P2["slow_ema: 26"]
+            P3["signal_period: 9"]
+            P4["atr_period: 14"]
+            P5["atr_threshold_mult: 0.5"]
+            P6["wait_bars: 2-3"]
+            P7["max_wait_bars: 5"]
+            P8["risk_reward: 2.0"]
+            P9["swing_lookback: 20"]
+        end
+        
+        subgraph CONDITIONS ["✅ Entry Conditions (ALL must be TRUE)"]
+            C1["1️⃣ No existing position"]
+            C2["2️⃣ Daily MACD > 0<br/>(Bullish bias)"]
+            C3["3️⃣ 4H Bullish crossover<br/>(MACD > Signal)"]
+            C4["4️⃣ Distance from zero > 0.5×ATR<br/>(Not in chop zone)"]
+            C5["5️⃣ Wait 2-3 bars completed<br/>(Patience filter)"]
+            C6["6️⃣ 1H Histogram flipped<br/>(Red → Green)"]
+        end
+        
+        subgraph ENTRY ["🟢 Entry Execution"]
+            E1["Entry Price: Current bar close"]
+            E2["Stop Loss: MIN of<br/>• Swing Low (20 bars)<br/>• Entry - 2×ATR"]
+            E3["Risk: Entry - Stop Loss"]
+            E4["Take Profit: Entry + 2×Risk"]
+        end
+        
+        subgraph EXITS ["🚪 Exit Conditions (First triggered wins)"]
+            X1["🔴 Stop Loss hit<br/>(Price ≤ SL)"]
+            X2["🟢 Take Profit hit<br/>(Price ≥ TP)"]
+            X3["🟡 Trailing signal<br/>(4H bearish crossover)"]
+            X4["🟠 Bias flip<br/>(Daily MACD crosses below 0)"]
+        end
+        
+        subgraph STATES ["🔄 Strategy States"]
+            ST1(["IDLE"])
+            ST2(["WAITING_CONFIRMATION"])
+            ST3(["WAITING_TRIGGER"])
+            ST4(["IN_POSITION"])
+            
+            ST1 -->|"Setup detected"| ST2
+            ST2 -->|"2-3 bars passed"| ST3
+            ST2 -->|"Invalidated"| ST1
+            ST3 -->|"Histogram flip"| ST4
+            ST3 -->|"Timeout (>5 bars)"| ST1
+            ST4 -->|"Exit triggered"| ST1
+        end
+        
+        subgraph TIMEFRAMES ["⏱️ Multi-Timeframe Logic"]
+            TF1["DAILY: Bias filter<br/>Long-only when MACD>0"]
+            TF2["4-HOUR: Setup detection<br/>Crossover + distance check"]
+            TF3["1-HOUR: Entry trigger<br/>Histogram flip confirmation"]
+            
+            TF1 --> TF2 --> TF3
+        end
+        
+        subgraph RESTRICTIONS ["🚫 Trade Restrictions (Long-Only)"]
+            R1["❌ Never short"]
+            R2["❌ No trading when Daily MACD ≤ 0"]
+            R3["❌ No entries in chop zone"]
+            R4["❌ No immediate crossover entries"]
+        end
+        
+    end
+    
+    style C1 fill:#e7f3ff
+    style C2 fill:#e7f3ff
+    style C3 fill:#e7f3ff
+    style C4 fill:#e7f3ff
+    style C5 fill:#e7f3ff
+    style C6 fill:#e7f3ff
+    style X1 fill:#ffcccc
+    style X2 fill:#ccffcc
+    style X3 fill:#fff3cd
+    style X4 fill:#ffe4cc
+    style ST4 fill:#28a745,color:#fff

@@ -1,0 +1,91 @@
+classDiagram
+    class BaseStrategy {
+        <<abstract>>
+        +get_name() str
+        +get_parameters() dict
+        +configure_parameters(**params)
+        +init()
+        +next()
+    }
+    
+    class MACDMoneyMapStrategy {
+        %% Class Parameters (Configurable via UI)
+        +int fast_ema = 12
+        +int slow_ema = 26
+        +int signal_period = 9
+        +int atr_period = 14
+        +float atr_threshold_mult = 0.5
+        +int wait_bars = 2
+        +int max_wait_bars = 5
+        +float risk_reward = 2.0
+        +int swing_lookback = 20
+        
+        %% State Variables
+        -bool setup_active
+        -int wait_counter
+        -int trigger_wait_counter
+        -float crossover_price
+        -float entry_price
+        -float stop_loss
+        -float take_profit
+        
+        %% Indicators (set in init)
+        -Series macd_daily
+        -Series macd_4h
+        -Series signal_4h
+        -Series macd_1h
+        -Series signal_1h
+        -Series histogram_1h
+        -Series atr
+        
+        +get_name() str
+        +get_parameters() dict
+        +init()
+        +next()
+        -check_daily_bias() bool
+        -check_4h_crossover() bool
+        -check_distance_valid() bool
+        -check_histogram_flip() bool
+        -calculate_stop_loss() float
+        -calculate_take_profit() float
+        -check_exit_conditions() str|None
+    }
+    
+    class TimeframeResampler {
+        <<utility>>
+        +resample_to_4h(hourly_data) DataFrame
+        +resample_to_daily(hourly_data) DataFrame
+        +align_to_hourly(resampled, hourly_index) Series
+    }
+    
+    class IndicatorCalculator {
+        <<utility>>
+        +calculate_ema(values, period) Series
+        +calculate_macd(close, fast, slow, signal) tuple
+        +calculate_atr(high, low, close, period) Series
+        +detect_crossover(fast, slow) Series
+        +detect_histogram_flip(histogram) Series
+        +find_swing_low(low, lookback) float
+    }
+    
+    class TradeState {
+        <<enumeration>>
+        IDLE
+        WAITING_CONFIRMATION
+        WAITING_TRIGGER
+        IN_POSITION
+    }
+    
+    class ExitReason {
+        <<enumeration>>
+        STOP_LOSS
+        TAKE_PROFIT
+        TRAILING_SIGNAL
+        BIAS_CHANGED
+    }
+    
+    BaseStrategy <|-- MACDMoneyMapStrategy
+    MACDMoneyMapStrategy ..> TimeframeResampler : uses
+    MACDMoneyMapStrategy ..> IndicatorCalculator : uses
+    MACDMoneyMapStrategy --> TradeState : manages
+    MACDMoneyMapStrategy --> ExitReason : produces
